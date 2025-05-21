@@ -5,7 +5,6 @@ import (
 	"EntropyLoadBalancer/dispatchers"
 	"EntropyLoadBalancer/logger"
 	"EntropyLoadBalancer/models"
-	"github.com/google/uuid"
 	"io"
 	"net/http"
 )
@@ -48,7 +47,6 @@ func handleRequest(w http.ResponseWriter, r *http.Request, dispatcher *dispatche
 		return
 	}
 	request := &models.Request{
-		ID:              uuid.New().String(),
 		Payload:         body,
 		ResponseChannel: responseChannel,
 		URL:             r.URL.Path,
