@@ -1,4 +1,4 @@
-module EntropyLoadBalancer
+module Go_Load_Balancer
 
 go 1.24
 

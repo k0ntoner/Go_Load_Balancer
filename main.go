@@ -1,12 +1,12 @@
 package main
 
 import (
-	"EntropyLoadBalancer/configs"
-	"EntropyLoadBalancer/dispatchers"
-	"EntropyLoadBalancer/logger"
-	"EntropyLoadBalancer/models"
+	"Go_Load_Balancer/dispatchers"
+	"Go_Load_Balancer/logger"
+	"Go_Load_Balancer/models"
 	"io"
 	"net/http"
+	"time"
 )
 
 var logServer = logger.New("Go Server", logger.ColorGreen)
@@ -16,18 +16,11 @@ func main() {
 }
 
 func startServer() {
-	instances, err := configs.GetInstances("spring-api-asg")
-	if err != nil {
-		logServer.Fatalf("Failed to fetch EC2 instances: %v", err)
-	}
-	for _, instance := range instances {
-		logServer.Printf("Starting instance %s", instance.ID)
-	}
-
 	quitChannel := make(chan bool)
 
-	dispatcher := dispatchers.NewDispatcher(instances, quitChannel)
-	dispatcher.Start()
+	dispatcher := dispatchers.NewDispatcher(quitChannel)
+	dispatcher.Start("spring-api-asg", 30*time.Second)
+
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		handleRequest(w, r, dispatcher)
 	})

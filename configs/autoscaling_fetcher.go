@@ -1,7 +1,7 @@
 package configs
 
 import (
-	"EntropyLoadBalancer/models"
+	"Go_Load_Balancer/models"
 	"context"
 	"log"
 	"os"
