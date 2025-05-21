@@ -1,12 +1,13 @@
 package dispatchers
 
 import (
-	"EntropyLoadBalancer/logger"
-	"EntropyLoadBalancer/models"
-	"EntropyLoadBalancer/workers"
-	"log"
+	"Go_Load_Balancer/configs"
+	"Go_Load_Balancer/logger"
+	"Go_Load_Balancer/models"
+	"Go_Load_Balancer/workers"
 	"math"
 	"sync"
+	"time"
 )
 
 var logDispatcher = logger.New("Dispatcher", logger.ColorYellow)
@@ -18,42 +19,108 @@ type Dispatcher struct {
 	StartChannel chan bool
 	Size         uint64
 	mu           sync.RWMutex
+	DeadChannel  chan string
 }
 
-func NewDispatcher(instanceList []*models.Instance, quitChannel chan bool) *Dispatcher {
+func NewDispatcher(quitChannel chan bool) *Dispatcher {
 	dispatcher := &Dispatcher{
-		InstanceList: instanceList,
-		WorkerList:   make([]*workers.Worker, len(instanceList)),
+		InstanceList: []*models.Instance{},
+		WorkerList:   []*workers.Worker{},
 		QuitChannel:  quitChannel,
 		StartChannel: make(chan bool),
-		Size:         uint64(len(instanceList)),
+		DeadChannel:  make(chan string),
 	}
 	return dispatcher
 }
 
-func (d *Dispatcher) Start() {
-	for i := 0; i < len(d.InstanceList); i++ {
-		go func(index int) {
-			quitChannel := make(chan bool)
-			instance := d.InstanceList[index]
-			createdWorker := workers.NewWorker(index+1, instance, quitChannel)
-			d.WorkerList[index] = createdWorker
-			logDispatcher.Printf("Created worker #%v.\n", createdWorker)
+func (d *Dispatcher) Start(autoScalingGroupName string, refreshInterval time.Duration) {
+	go func() {
+		for deadID := range d.DeadChannel {
+			d.mu.Lock()
+			d.removeByID(deadID)
+			d.mu.Unlock()
+			logDispatcher.Printf("[DISPATCHER] removed dead instance %s", deadID)
+		}
+	}()
 
-			<-quitChannel
-			log.Fatalf("Worker #%d Instance #%v crashed.\n", createdWorker.ID, createdWorker.TargetInstance)
-			log.Fatalf("Removing worker #%v.....\n", createdWorker.ID)
-			d.removeDependencies(createdWorker, instance)
-			log.Fatalf("Worker #%v has been removed.\n", createdWorker.ID)
+	d.refresh(autoScalingGroupName)
 
-			if d.Size == 0 {
-				log.Fatalf("Every worker was destroyed, dispatcher doesn't available")
-				d.QuitChannel <- true
-				return
-			}
-		}(i)
+	go func() {
+		ticker := time.NewTicker(refreshInterval)
+		defer ticker.Stop()
+		for range ticker.C {
+			d.refresh(autoScalingGroupName)
+		}
+	}()
+}
+
+func (d *Dispatcher) refresh(autoScalingGroupName string) {
+	logDispatcher.Printf("Refreshing instances from ASG %q…", autoScalingGroupName)
+	newList, err := configs.GetInstances(autoScalingGroupName)
+	if err != nil {
+		logDispatcher.Printf("[ERROR] fetch instances: %v", err)
+		return
 	}
 
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	oldMap := make(map[string]*models.Instance, len(d.InstanceList))
+	for _, inst := range d.InstanceList {
+		oldMap[inst.ID] = inst
+	}
+	newMap := make(map[string]*models.Instance, len(newList))
+	for _, inst := range newList {
+		newMap[inst.ID] = inst
+	}
+
+	for id, inst := range newMap {
+		if _, exists := oldMap[id]; !exists {
+			logDispatcher.Printf("→ Adding new instance %s", id)
+			d.InstanceList = append(d.InstanceList, inst)
+
+			quitCh := make(chan bool)
+			w := workers.NewWorker(len(d.WorkerList)+1, inst, quitCh, d.DeadChannel)
+			d.WorkerList = append(d.WorkerList, w)
+			go func(worker *workers.Worker, ch chan bool) {
+				<-ch
+				logDispatcher.Printf("Worker %d quit", worker.ID)
+			}(w, quitCh)
+		}
+	}
+
+	for i := 0; i < len(d.InstanceList); {
+		inst := d.InstanceList[i]
+		if _, still := newMap[inst.ID]; !still {
+			logDispatcher.Printf("← Removing instance %s", inst.ID)
+			for j, w := range d.WorkerList {
+				if w.TargetInstance.ID == inst.ID {
+					w.QuitChannel <- true
+					d.WorkerList = append(d.WorkerList[:j], d.WorkerList[j+1:]...)
+					break
+				}
+			}
+			d.InstanceList = append(d.InstanceList[:i], d.InstanceList[i+1:]...)
+			continue
+		}
+		i++
+	}
+}
+
+func (d *Dispatcher) removeByID(id string) {
+	for i, w := range d.WorkerList {
+		if w.TargetInstance.ID == id {
+			w.QuitChannel <- true
+			d.WorkerList = append(d.WorkerList[:i], d.WorkerList[i+1:]...)
+			break
+		}
+	}
+	for i, inst := range d.InstanceList {
+		if inst.ID == id {
+			d.InstanceList = append(d.InstanceList[:i], d.InstanceList[i+1:]...)
+			break
+		}
+	}
 }
 
 func (d *Dispatcher) HandleRequest(request *models.Request) {
@@ -80,31 +147,4 @@ func (d Dispatcher) getWorker() *workers.Worker {
 	}
 
 	return selected
-}
-
-func removeWorker(list []*workers.Worker, target *workers.Worker) []*workers.Worker {
-	for i, w := range list {
-		if w == target {
-			return append(list[:i], list[i+1:]...)
-		}
-	}
-	return list
-}
-
-func removeInstance(list []*models.Instance, target *models.Instance) []*models.Instance {
-	for i, s := range list {
-		if s == target {
-			return append(list[:i], list[i+1:]...)
-		}
-	}
-	return list
-}
-
-func (d *Dispatcher) removeDependencies(w *workers.Worker, instance *models.Instance) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	d.WorkerList = removeWorker(d.WorkerList, w)
-	d.Size--
-	d.InstanceList = removeInstance(d.InstanceList, instance)
 }
