@@ -5,6 +5,7 @@ import (
 	"EntropyLoadBalancer/models"
 	"EntropyLoadBalancer/workers"
 	"log"
+	"math"
 	"sync"
 )
 
@@ -57,14 +58,28 @@ func (d *Dispatcher) Start() {
 
 func (d *Dispatcher) HandleRequest(request *models.Request) {
 
-	worker := d.getWorker(request)
+	worker := d.getWorker()
 	logDispatcher.Printf("Worker [#%d] handle request #%v", worker.ID, request)
 	worker.HandleRequest(request)
 }
 
-func (d Dispatcher) getWorker(request *models.Request) *workers.Worker {
-	index := request.HashCode() % d.Size
-	return d.WorkerList[index]
+func (d Dispatcher) getWorker() *workers.Worker {
+	if len(d.WorkerList) == 0 {
+		return nil
+	}
+
+	var selected *workers.Worker
+	minRequests := int32(math.MaxInt32)
+
+	for _, worker := range d.WorkerList {
+		active := worker.GetActiveRequests()
+		if active < minRequests {
+			minRequests = active
+			selected = worker
+		}
+	}
+
+	return selected
 }
 
 func removeWorker(list []*workers.Worker, target *workers.Worker) []*workers.Worker {
