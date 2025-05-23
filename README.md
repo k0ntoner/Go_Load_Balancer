@@ -1,4 +1,4 @@
-<img width="500" alt="image" src="https://github.com/user-attachments/assets/2d34494e-30d2-4153-a2fb-a97b01d7198e" /># Go Load Balancer — Least Connections with Auto Scaling
+# Go Load Balancer — Least Connections with Auto Scaling
 
 Цей репозиторій містить реалізацію високопродуктивного балансувальника навантаження на мові Go. Балансувальник використовує алгоритм **Least Connections** та підтримує **динамічне оновлення пулу серверів** через AWS Auto Scaling Group. Реалізовано механізми health-check, повторних спроб, логування та graceful shutdown.
 
