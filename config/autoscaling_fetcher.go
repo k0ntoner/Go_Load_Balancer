@@ -1,7 +1,7 @@
-package configs
+package config
 
 import (
-	"EntropyLoadBalancer/models"
+	"Go_Load_Balancer/models"
 	"context"
 	"log"
 	"os"
@@ -15,10 +15,10 @@ import (
 
 var logger = log.New(os.Stdout, "[AWSClient] ", log.LstdFlags|log.Lmicroseconds)
 
-func fetchInstanceList(groupName string) ([]string, error) {
+func fetchInstanceList(groupName string, region string) ([]string, error) {
 	ctx := context.Background()
 
-	cfg, err := config.LoadDefaultConfig(ctx)
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	if err != nil {
 		return nil, err
 	}
@@ -61,8 +61,8 @@ func fetchInstanceList(groupName string) ([]string, error) {
 	return publicIPs, nil
 }
 
-func GetInstances(groupName string) ([]*models.Instance, error) {
-	ipAddressList, err := fetchInstanceList(groupName)
+func GetInstances(groupName string, region string) ([]*models.Instance, error) {
+	ipAddressList, err := fetchInstanceList(groupName, region)
 	if err != nil {
 		return nil, err
 	}

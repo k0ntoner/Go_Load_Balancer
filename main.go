@@ -1,12 +1,14 @@
 package main
 
 import (
-	"EntropyLoadBalancer/configs"
-	"EntropyLoadBalancer/dispatchers"
-	"EntropyLoadBalancer/logger"
-	"EntropyLoadBalancer/models"
+	"Go_Load_Balancer/config"
+	"Go_Load_Balancer/dispatchers"
+	"Go_Load_Balancer/logger"
+	"Go_Load_Balancer/models"
 	"io"
+	"log"
 	"net/http"
+	"strconv"
 )
 
 var logServer = logger.New("Go Server", logger.ColorGreen)
@@ -16,23 +18,22 @@ func main() {
 }
 
 func startServer() {
-	instances, err := configs.GetInstances("spring-api-asg")
+	configuration, err := config.LoadConfig("application_properties.yaml")
 	if err != nil {
-		logServer.Fatalf("Failed to fetch EC2 instances: %v", err)
-	}
-	for _, instance := range instances {
-		logServer.Printf("Starting instance %s", instance.ID)
+		log.Fatalf("Error loading config: %v", err)
 	}
 
 	quitChannel := make(chan bool)
 
-	dispatcher := dispatchers.NewDispatcher(instances, quitChannel)
-	dispatcher.Start()
+	dispatcher := dispatchers.NewDispatcher(quitChannel)
+
+	dispatcher.Start(configuration.DispatcherConfig.AutoScalingGroupName, configuration.AWS.Region, configuration.DispatcherConfig.TickRefreshTime)
+
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		handleRequest(w, r, dispatcher)
 	})
 	logServer.Println("HTTP server started on :8080")
-	if err := http.ListenAndServe(":8080", nil); err != nil {
+	if err := http.ListenAndServe(":"+strconv.Itoa(configuration.Server.Port), nil); err != nil {
 		logServer.Fatalf("HTTP server crashed: %v", err)
 	}
 }

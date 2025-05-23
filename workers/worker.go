@@ -1,8 +1,8 @@
 package workers
 
 import (
-	"EntropyLoadBalancer/logger"
-	"EntropyLoadBalancer/models"
+	"Go_Load_Balancer/logger"
+	"Go_Load_Balancer/models"
 	"bytes"
 	"fmt"
 	"io"
@@ -15,8 +15,8 @@ var logWorker = logger.New("Worker", logger.ColorBlue)
 
 var httpClient = &http.Client{
 	Transport: &http.Transport{
-		MaxIdleConns:        200,
-		MaxIdleConnsPerHost: 200,
+		MaxIdleConns:        100000,
+		MaxIdleConnsPerHost: 10000,
 		IdleConnTimeout:     90 * time.Second,
 	},
 	Timeout: 30 * time.Second,
@@ -28,15 +28,17 @@ type Worker struct {
 	QuitChannel            chan bool
 	Retry                  byte
 	NumberOfActiveRequests int32
+	DeadChannel            chan string
 }
 
-func NewWorker(id int, targetInstance *models.Instance, QuitChannel chan bool) *Worker {
+func NewWorker(id int, targetInstance *models.Instance, QuitChannel chan bool, DeadChannel chan string) *Worker {
 	return &Worker{
 		ID:                     id,
 		TargetInstance:         targetInstance,
 		QuitChannel:            QuitChannel,
-		Retry:                  3,
+		Retry:                  10,
 		NumberOfActiveRequests: 0,
+		DeadChannel:            DeadChannel,
 	}
 }
 
@@ -85,8 +87,10 @@ func (w *Worker) handleRequest(request *models.Request, numberOfTry byte) {
 		if numberOfTry < w.Retry {
 			w.handleRequest(request, numberOfTry+1)
 		} else {
-			logWorker.Printf("[FAIL] Worker #%d: Instance [%s] unreachable. Error: %v", w.ID, w.TargetInstance.IPAddress, err)
+			logWorker.Printf("[FAIL] Worker #%d: Instance [%s] unreachable", w.ID, w.TargetInstance.IPAddress)
+			w.DeadChannel <- w.TargetInstance.ID
 			request.ResponseChannel <- []byte("503 Service Unavailable")
+			return
 		}
 		return
 	}
