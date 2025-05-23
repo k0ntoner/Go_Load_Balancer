@@ -1,0 +1,9 @@
+server:
+  port: 8080
+
+dispatcher:
+  autoScalingGroupName: spring-api-asg
+  numberOfRetries: 10
+  tickRefreshTime: 30s
+aws:
+  region: eu-north-1

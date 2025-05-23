@@ -1,7 +1,7 @@
 package dispatchers
 
 import (
-	"Go_Load_Balancer/configs"
+	"Go_Load_Balancer/config"
 	"Go_Load_Balancer/logger"
 	"Go_Load_Balancer/models"
 	"Go_Load_Balancer/workers"
@@ -33,7 +33,7 @@ func NewDispatcher(quitChannel chan bool) *Dispatcher {
 	return dispatcher
 }
 
-func (d *Dispatcher) Start(autoScalingGroupName string, refreshInterval time.Duration) {
+func (d *Dispatcher) Start(autoScalingGroupName string, region string, refreshInterval time.Duration) {
 	go func() {
 		for deadID := range d.DeadChannel {
 			d.mu.Lock()
@@ -43,20 +43,20 @@ func (d *Dispatcher) Start(autoScalingGroupName string, refreshInterval time.Dur
 		}
 	}()
 
-	d.refresh(autoScalingGroupName)
+	d.refresh(autoScalingGroupName, region)
 
 	go func() {
 		ticker := time.NewTicker(refreshInterval)
 		defer ticker.Stop()
 		for range ticker.C {
-			d.refresh(autoScalingGroupName)
+			d.refresh(autoScalingGroupName, region)
 		}
 	}()
 }
 
-func (d *Dispatcher) refresh(autoScalingGroupName string) {
+func (d *Dispatcher) refresh(autoScalingGroupName string, region string) {
 	logDispatcher.Printf("Refreshing instances from ASG %q…", autoScalingGroupName)
-	newList, err := configs.GetInstances(autoScalingGroupName)
+	newList, err := config.GetInstances(autoScalingGroupName, region)
 	if err != nil {
 		logDispatcher.Printf("[ERROR] fetch instances: %v", err)
 		return

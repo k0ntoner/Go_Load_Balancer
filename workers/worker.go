@@ -15,8 +15,8 @@ var logWorker = logger.New("Worker", logger.ColorBlue)
 
 var httpClient = &http.Client{
 	Transport: &http.Transport{
-		MaxIdleConns:        200,
-		MaxIdleConnsPerHost: 200,
+		MaxIdleConns:        100000,
+		MaxIdleConnsPerHost: 10000,
 		IdleConnTimeout:     90 * time.Second,
 	},
 	Timeout: 30 * time.Second,
